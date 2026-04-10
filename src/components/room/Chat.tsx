@@ -1,5 +1,3 @@
-
-
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
@@ -8,7 +6,7 @@ import { ref, onValue, push, set, off } from 'firebase/database';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { User } from '@/app/providers';
-import { Trash2, Send, Mic, MicOff, MessageCircle } from 'lucide-react';
+import { Trash2, Send, Mic, MicOff, MessageCircle, Gift, CornerUpLeft, X } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -35,9 +33,11 @@ export interface Message {
   text: string;
   timestamp: number;
   isSystemMessage?: boolean;
+  quotedMessage?: string;
+  quotedSender?: string;
 }
 
-const ChatMessages = ({ roomId, user }: { roomId: string; user: User; }) => {
+const ChatMessages = ({ roomId, user, onReply }: { roomId: string; user: User; onReply: (message: Message) => void; }) => {
     const viewportRef = useRef<HTMLDivElement>(null);
     const [messages, setMessages] = useState<Message[]>([]);
 
@@ -72,18 +72,28 @@ const ChatMessages = ({ roomId, user }: { roomId: string; user: User; }) => {
                         );
                     }
                     return (
-                        <div key={msg.id} className={cn(
-                            "flex flex-col max-w-[80%]",
-                            isCurrentUser ? "self-end items-end" : "self-start items-start"
-                        )}>
-                             {!isCurrentUser && <span className="text-xs text-muted-foreground px-3">{msg.sender}</span>}
-                             <div className={cn(
-                                "p-2 md:p-3 rounded-xl break-words",
-                                isCurrentUser 
-                                  ? "bg-primary text-primary-foreground rounded-br-none" 
-                                  : "bg-secondary text-secondary-foreground rounded-bl-none"
-                             )}>
-                                <p className="text-sm">{msg.text}</p>
+                        <div key={msg.id} className={cn("flex items-center gap-2 group w-full", "justify-end")}>
+                             {!msg.isSystemMessage && (
+                                <button onClick={() => onReply(msg)} className="opacity-0 group-hover:opacity-100 transition-opacity p-2 rounded-full hover:bg-black/20 self-center">
+                                    <CornerUpLeft className="w-4 h-4" />
+                                </button>
+                            )}
+                            <div className={cn("flex flex-col max-w-[80%]")}>
+                                <span className="text-xs text-muted-foreground px-3">{msg.sender}</span>
+                                <div className={cn(
+                                    "p-2 md:p-3 rounded-xl break-words",
+                                    isCurrentUser 
+                                        ? "bg-primary text-primary-foreground" 
+                                        : "bg-secondary text-secondary-foreground"
+                                )}>
+                                    {msg.quotedMessage && (
+                                        <div className="p-2 rounded-md bg-black/20 border-b border-white/20 mb-2">
+                                            <p className="text-xs font-bold">{msg.quotedSender}</p>
+                                            <p className="text-sm opacity-80 line-clamp-2">{msg.quotedMessage}</p>
+                                        </div>
+                                    )}
+                                    <p className="text-sm">{msg.text}</p>
+                                </div>
                             </div>
                         </div>
                     );
@@ -93,7 +103,7 @@ const ChatMessages = ({ roomId, user }: { roomId: string; user: User; }) => {
     );
 };
 
-const ChatInput = ({ roomId, user, isSeated, isMuted, onToggleMute, inputRef, onFocus, onBlur, onSend, isSending }: { roomId: string; user: User; isSeated: boolean; isMuted: boolean; onToggleMute: () => void; inputRef: React.RefObject<HTMLInputElement>; onFocus: () => void; onBlur: () => void; onSend: (value: string) => Promise<void>; isSending: boolean; }) => {
+const ChatInput = ({ roomId, user, isSeated, isMuted, onToggleMute, inputRef, onFocus, onBlur, onSend, isSending, onOpenGiftShop, replyingTo, onCancelReply }: { roomId: string; user: User; isSeated: boolean; isMuted: boolean; onToggleMute: () => void; inputRef: React.RefObject<HTMLInputElement>; onFocus: () => void; onBlur: () => void; onSend: (value: string) => Promise<void>; isSending: boolean; onOpenGiftShop: () => void; replyingTo: Message | null; onCancelReply: () => void; }) => {
     const [newMessage, setNewMessage] = useState('');
 
     const handleSendMessage = async (e: React.FormEvent) => {
@@ -105,19 +115,33 @@ const ChatInput = ({ roomId, user, isSeated, isMuted, onToggleMute, inputRef, on
     
     return (
         <div className="p-2 md:p-4 border-t border-border flex-shrink-0 bg-card/80 backdrop-blur-lg">
+            {replyingTo && (
+                <div className="px-3 py-2 bg-secondary/50 rounded-t-md flex justify-between items-center mx-1">
+                    <div className="text-xs overflow-hidden">
+                        <p className="font-bold text-accent">الرد على {replyingTo.sender}</p>
+                        <p className="truncate text-muted-foreground">{replyingTo.text}</p>
+                    </div>
+                    <Button variant="ghost" size="icon" className="h-6 w-6 rounded-full" onClick={onCancelReply}>
+                        <X className="w-4 h-4" />
+                    </Button>
+                </div>
+            )}
             <form onSubmit={handleSendMessage} className="flex w-full items-center gap-2">
                 {isSeated && (
                      <Button type="button" size="icon" variant="ghost" onClick={onToggleMute} className="h-11 w-11 flex-shrink-0">
                         {isMuted ? <MicOff className="w-5 h-5 text-destructive" /> : <Mic className="w-5 h-5 text-accent" />}
                     </Button>
                 )}
+                 <Button type="button" size="icon" variant="ghost" onClick={onOpenGiftShop} className="h-12 w-12 flex-shrink-0 text-pink-400 hover:text-pink-500 hover:bg-pink-400/10">
+                    <Gift className="h-6 w-6" />
+                </Button>
                 <Input
                     ref={inputRef}
                     type="text"
                     placeholder="اكتب رسالتك..."
                     value={newMessage}
                     onChange={(e) => setNewMessage(e.target.value)}
-                    className="bg-input/80 backdrop-blur-sm border-border focus:ring-accent h-12 flex-grow"
+                    className={cn("bg-input/80 backdrop-blur-sm border-border focus:ring-accent h-12 flex-grow", replyingTo && "rounded-t-none")}
                     disabled={isSending}
                     onFocus={onFocus}
                     onBlur={onBlur}
