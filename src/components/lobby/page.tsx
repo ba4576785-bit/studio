@@ -1,3 +1,5 @@
+
+
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
@@ -8,7 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { PlusCircle, LogIn, Loader2, Users, DoorOpen, Clapperboard, RotateCcw, Copy, Signal } from 'lucide-react';
 import useUserSession from '@/hooks/use-user-session';
 import { database } from '@/lib/firebase';
-import { ref, onValue, off, goOnline } from 'firebase/database';
+import { ref, onValue, off, goOnline, remove } from 'firebase/database';
 import { createRoom } from '@/lib/firebase-service';
 import Image from 'next/image';
 import { PlaceHolderImages } from '@/lib/placeholder-images';
@@ -45,15 +47,22 @@ export default function LobbyPage() {
 
   useEffect(() => {
     const roomsRef = ref(database, 'rooms');
-    const unsub = onValue(roomsRef, (snapshot) => {
+    const listener = onValue(roomsRef, (snapshot) => {
       const roomsData = snapshot.val();
       const loadedRooms: RoomData[] = [];
       let hostedRoom: RoomData | null = null;
       
       if (roomsData && user) {
-        Object.keys(roomsData).forEach(key => {
+        for (const key in roomsData) {
           const room = roomsData[key];
           const memberCount = room.members ? Object.keys(room.members).length : 0;
+          
+          if (memberCount === 0) {
+            // This is a ghost room, remove it.
+            remove(ref(database, `rooms/${key}`));
+            continue;
+          }
+
           const roomDetails: RoomData = {
             id: key,
             name: room.name,
@@ -69,7 +78,7 @@ export default function LobbyPage() {
           } else if (!roomDetails.isPrivate) {
             loadedRooms.push(roomDetails);
           }
-        });
+        }
       }
       
       setActiveRooms(loadedRooms);
@@ -77,7 +86,7 @@ export default function LobbyPage() {
       setIsLoadingHostedRoom(false);
     });
 
-    return () => unsub();
+    return () => off(roomsRef, 'value', listener);
   }, [user]);
 
   const handleCreateRoom = async () => {
@@ -254,3 +263,5 @@ export default function LobbyPage() {
     </div>
   );
 }
+
+    
